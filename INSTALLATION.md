@@ -73,20 +73,19 @@ C:\Users\[YourUsername]\Documents\Ableton\User Library\Remote Scripts\
 3. Paste: `~/Library/Preferences/Ableton/`
 4. Navigate to your Live version folder, then `User Remote Scripts`
 
-### Install the Main Remote Script
+### Install the Main Remote Script (Hybrid TCP + UDP)
 
-1. **Create folder:** In your Remote Scripts directory, create a new folder called `AbletonMCP`
-2. **Copy file:** Copy `AbletonMCP_Remote_Script/__init__.py` into the `AbletonMCP` folder
+1. **Copy folder:** Copy `Ableton Remote Scripts/AbletonMCP_HYBRID/` into your Ableton Remote Scripts directory
 
 **Your folder structure should look like:**
 ```
 Remote Scripts/
-├── AbletonMCP/
+├── AbletonMCP_HYBRID/
 │   └── __init__.py
 └── (other scripts...)
 ```
 
-Same would apply if you want to install the UDP version of Ableton MCP server. Create another folder (I called it "AbletonMCP_UDP") and place its corresponding '__init__.py' inside. Both servers can co-exist.
+This hybrid script covers both the standard MCP TCP features and the UDP parameter control used by the XY mouse controller.
 
 > 💡 **Tip:** Double-check this folder structure - it's the most common source of installation issues.
 
@@ -99,11 +98,11 @@ Enable the Remote Script:
 1.  **Open or restart Ableton Live.**
 2.  Navigate to **Preferences** (`Ctrl + ,` or `Cmd + ,`).
 3.  Go to the **Link, Tempo & MIDI** tab.
-4.  In an empty **Control Surface** slot, select **AbletonMCP** from the dropdown menu.
-5.  Set the **Input** and **Output** for the `AbletonMCP` surface to **None**.
+4.  In an empty **Control Surface** slot, select **AbletonMCP_HYBRID** from the dropdown menu.
+5.  Set the **Input** and **Output** for the `AbletonMCP_HYBRID` surface to **None**.
 6.  Close the Preferences window.
 
-When the script is loaded correctly, you will see a message in Ableton's status bar: **"AbletonMCP: Listening for commands on port 9877"**.
+When the script is loaded correctly, you will see a message in Ableton's status bar: **"AbletonMCP: TCP on 9877, UDP on 9878"**.
 
 ---
 
@@ -175,7 +174,7 @@ echo $PWD/MCP_Server/server.py
 Look for a **🔨 hammer icon** in the chat interface - this indicates MCP tools are loaded.
 
 **For Cursor:**
-You'll see a green dot next to the MCP server icon, and a message saying "40 tools enabled".
+You'll see a green dot next to the MCP server icon, and a message showing the number of tools enabled.
 
 You might have to restart your AI assistant in order for changes to impact.
 
@@ -202,19 +201,13 @@ If all three commands work correctly, congratulations! 🎉 Your installation is
 ### Optional: Advanced Features
 
 <details>
-<summary><strong>⚡ High-Performance UDP Server (For Real-Time Control)</strong></summary>
+<summary><strong>⚡ High-Performance UDP Control (For Real-Time Control)</strong></summary>
 
 For ultra-low latency parameter control (like the XY Mouse Controller example):
 
-1. **Install UDP Remote Script:**
-   - Create folder: `Remote Scripts/AbletonMCP_UDP/`
-   - Copy: `Ableton-MCP_hybrid-server/AbletonMCP_UDP/__init__.py`
+1. **Install the Hybrid Remote Script** (Step 2 above).
 
-2. **Configure in Ableton:**
-   - Add another Control Surface: "AbletonMCP_UDP"
-   - Input/Output: "None"
-
-3. **Test XY Mouse Controller:**
+2. **Test XY Mouse Controller:**
    ```bash
    cd experimental_tools/xy_mouse_controller
    pip install -r requirements.txt
@@ -223,7 +216,7 @@ For ultra-low latency parameter control (like the XY Mouse Controller example):
 
 **Perfect for:** Live performance, real-time effects, expressive control.
 
-Note: both remote scripts (TCP and UDP) can co-exist without issues.
+Note: The hybrid script serves both MCP TCP clients and UDP controllers at the same time.
 </details>
 
 <details>

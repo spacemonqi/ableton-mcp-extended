@@ -90,8 +90,8 @@ pip install -e .
 1. Find your Ableton Remote Scripts folder:
    - **Windows**: `C:\Users\[You]\Documents\Ableton\User Library\Remote Scripts\`
    - **Mac**: `~/Library/Preferences/Ableton/Live [Version]/User Remote Scripts/`
-2. Create folder: `AbletonMCP`
-3. Copy `AbletonMCP_Remote_Script/__init__.py` into this folder
+2. Create folder: `AbletonMCP_HYBRID`
+3. Copy `Ableton Remote Scripts/AbletonMCP_HYBRID/` into your Ableton Remote Scripts directory
 
 ### 3. **Configure Ableton**
 1. Open Ableton Live
@@ -155,8 +155,8 @@ graph TB
 For real-time parameter control with ultra-low latency:
 
 ```bash
-# Install the hybrid server
-cp -r Ableton-MCP_hybrid-server/AbletonMCP_UDP/ ~/Remote\ Scripts/AbletonMCP_UDP/
+# Install the hybrid remote script (TCP + UDP)
+cp -r "Ableton Remote Scripts/AbletonMCP_HYBRID" ~/Remote\ Scripts/
 
 # Try the XY Mouse Controller example
 cd experimental_tools/xy_mouse_controller
@@ -212,9 +212,9 @@ This project includes several specialized components:
 - Extensive Ableton Live API integration
 - Compatible with Claude Desktop, Cursor, and Gemini CLI.
 
-### **Hybrid TCP/UDP Server** 
-- High-performance real-time parameter control
-- Ultra-low latency for live performance
+### **Hybrid TCP/UDP Remote Script**
+- Full MCP feature set plus real-time parameter control
+- Ultra-low latency for live performance tools
 - Perfect for controllers and interactive tools
 
 ### **ElevenLabs Integration**
