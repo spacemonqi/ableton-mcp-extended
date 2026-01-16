@@ -74,3 +74,47 @@ button:hover {
   font-size: 0.9em;
   color: #9aa3b2;
 }
+
+.chart-section {
+  margin-top: 16px;
+}
+
+.chart-container-large {
+  margin: 16px 0;
+  padding: 16px;
+  background: #10141a;
+  border-radius: 8px;
+  border: 1px solid #2f3745;
+  height: 300px;
+}
+
+#stream-chart {
+  max-height: 280px;
+}
+
+.streams-list-selectable {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.streams-list-selectable li {
+  padding: 8px 12px;
+  margin: 4px 0;
+  background: #10141a;
+  border: 2px solid #2f3745;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.streams-list-selectable li:hover {
+  border-color: #4a7af8;
+  background: #151920;
+}
+
+.streams-list-selectable li.selected {
+  border-color: #2f6df6;
+  background: #1a2842;
+  font-weight: bold;
+}

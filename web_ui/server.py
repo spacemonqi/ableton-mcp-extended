@@ -17,6 +17,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MAPPINGS_PATH = os.environ.get("MAPPINGS_PATH", os.path.join(PROJECT_ROOT, "smart_router", "mappings.json"))
 STREAMS_PATH = os.environ.get("STREAMS_PATH", os.path.join(PROJECT_ROOT, "smart_router", "streams.json"))
 LAST_SELECTED_PATH = os.environ.get("LAST_SELECTED_PATH", os.path.join(PROJECT_ROOT, "smart_router", "last_selected.json"))
+STREAM_VALUES_PATH = os.environ.get("STREAM_VALUES_PATH", os.path.join(PROJECT_ROOT, "smart_router", "stream_values.json"))
 
 app = FastAPI(title="Ableton Motion Mapping UI")
 
@@ -157,6 +158,13 @@ def list_streams():
 def last_selected():
     data = _locked_read_json(LAST_SELECTED_PATH)
     return data if data else {"type": None, "data": None, "timestamp": None}
+
+
+@app.get("/api/stream-values")
+def stream_values():
+    """Get current values of all motion streams (updated at ~20Hz by smart router)"""
+    data = _locked_read_json(STREAM_VALUES_PATH)
+    return data if data else {"timestamp": None, "values": {}}
 
 
 app.mount("/", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static"), html=True), name="static")

@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import signal
 import time
@@ -20,13 +21,16 @@ def clamp(value: float, min_value: float, max_value: float) -> float:
 
 
 class SmartRouter:
-    def __init__(self, config_path: str, streams_cache_path: str):
+    def __init__(self, config_path: str, streams_cache_path: str, stream_values_path: str):
         self.config_manager = ConfigManager(config_path, streams_cache_path)
         self.queue = Queue()
         self._receiver = None
         self._sender = None
         self._running = False
         self._last_values: Dict[str, float] = {}
+        self._current_stream_values: Dict[str, float] = {}
+        self._stream_values_path = stream_values_path
+        self._last_stream_values_write = 0.0
 
     def start(self, host: str = "0.0.0.0"):
         settings = self.config_manager.get_settings()
@@ -53,12 +57,29 @@ class SmartRouter:
             self._receiver.stop()
         self.config_manager.stop_watcher()
 
+    def _write_stream_values(self):
+        """Write current stream values to JSON file for web UI"""
+        try:
+            self._last_stream_values_write = time.time()
+            with open(self._stream_values_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "timestamp": self._last_stream_values_write,
+                    "values": self._current_stream_values
+                }, f)
+        except Exception as e:
+            # Don't crash on write errors
+            pass
+
     def _main_loop(self):
         last_log_time = 0
         while self._running:
             try:
                 payload = self.queue.get(timeout=0.1)
             except Empty:
+                # Still write stream values even if no new data
+                now = time.time()
+                if now - self._last_stream_values_write > 0.05:  # 50ms = 20Hz
+                    self._write_stream_values()
                 continue
 
             if not isinstance(payload, dict):
@@ -72,6 +93,15 @@ class SmartRouter:
             if now - last_log_time > 2.0:
                 log(f"Received motion data: {list(payload.keys())}")
                 last_log_time = now
+
+            # Update current stream values
+            for stream_name, raw_value in payload.items():
+                if isinstance(raw_value, (int, float)):
+                    self._current_stream_values[stream_name] = float(raw_value)
+
+            # Write stream values periodically
+            if now - self._last_stream_values_write > 0.05:  # 50ms = 20Hz
+                self._write_stream_values()
 
             for stream_name, raw_value in payload.items():
                 if not isinstance(raw_value, (int, float)):
@@ -132,8 +162,9 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = args.config or os.path.join(base_dir, "mappings.json")
     streams_cache = args.streams_cache or os.path.join(base_dir, "streams.json")
+    stream_values_path = os.path.join(base_dir, "stream_values.json")
 
-    router = SmartRouter(config_path, streams_cache)
+    router = SmartRouter(config_path, streams_cache, stream_values_path)
 
     def _handle_exit(signum, frame):
         router.stop()

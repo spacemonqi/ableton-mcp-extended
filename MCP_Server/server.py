@@ -188,11 +188,11 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 
 # Create the MCP server with lifespan support
 try:
-mcp = FastMCP(
-    "AbletonMCP",
-    description="Ableton Live integration through the Model Context Protocol",
-    lifespan=server_lifespan
-)
+    mcp = FastMCP(
+        "AbletonMCP",
+        description="Ableton Live integration through the Model Context Protocol",
+        lifespan=server_lifespan
+    )
 except TypeError:
     # Older MCP SDK versions don't accept "description"
     mcp = FastMCP(

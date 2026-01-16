@@ -9,19 +9,19 @@
   },
   "mappings": [
     {
-      "motion_stream": "wrist-bend",
+      "motion_stream": "forearm-angle",
       "target": {
         "track_index": 0,
         "device_index": 1,
-        "parameter_index": 8
+        "parameter_index": 6
       },
       "range": [
         0.0,
         1.0
       ],
-      "smoothing": 0.0,
+      "smoothing": 0.1,
       "enabled": true,
-      "updated_at": 1768564670.547047
+      "updated_at": 1768564969.473897
     }
   ]
 }

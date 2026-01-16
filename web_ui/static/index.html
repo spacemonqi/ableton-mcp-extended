@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ableton Motion Mapping</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <div class="container">
@@ -16,7 +17,8 @@
       <main class="grid">
         <section class="panel">
           <h2>Motion Streams</h2>
-          <ul id="streams-list"></ul>
+          <p class="hint">Click to select for visualization</p>
+          <ul id="streams-list" class="streams-list-selectable"></ul>
         </section>
 
         <section class="panel">
@@ -65,6 +67,14 @@
           <p class="hint" id="last-selected-hint"></p>
         </section>
       </main>
+
+      <section class="panel chart-section">
+        <h2>Stream Visualization</h2>
+        <p class="hint">Select one or more streams above to plot</p>
+        <div class="chart-container-large">
+          <canvas id="stream-chart"></canvas>
+        </div>
+      </section>
     </div>
 
     <script src="app.js"></script>
