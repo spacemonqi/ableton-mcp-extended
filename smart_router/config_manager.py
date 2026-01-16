@@ -23,6 +23,9 @@ DEFAULT_CONFIG = {
         "mocap_port": 9877,
         "ableton_host": "localhost",
         "ableton_port": 9878,
+        "ableton_tcp_port": 9877,
+        "api_host": "0.0.0.0",
+        "api_port": 9090,
         "auto_discover_streams": True,
         "streams_cache_interval": 0.5,
         "streams_ttl_seconds": 5.0
@@ -95,10 +98,20 @@ class ConfigManager:
             # Normalize structure
             if "settings" not in data or not isinstance(data["settings"], dict):
                 data["settings"] = DEFAULT_CONFIG["settings"].copy()
+            else:
+                for key, value in DEFAULT_CONFIG["settings"].items():
+                    data["settings"].setdefault(key, value)
             if "mappings" not in data or not isinstance(data["mappings"], list):
                 data["mappings"] = []
 
             self._config = data
+
+    def _write_config_locked(self):
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(self._config, f, indent=2)
+        except Exception as e:
+            log(f"Failed to write config: {e}")
 
     def get_settings(self) -> Dict:
         with self._lock:
@@ -108,6 +121,47 @@ class ConfigManager:
         with self._lock:
             mappings = self._config.get("mappings", [])
             return [m for m in mappings if m.get("motion_stream") == stream_name and m.get("enabled", True)]
+
+    def list_mappings(self) -> List[Dict]:
+        with self._lock:
+            return list(self._config.get("mappings", []))
+
+    def add_mapping(self, mapping: Dict) -> Dict:
+        with self._lock:
+            mappings = self._config.get("mappings", [])
+            if any(m.get("motion_stream") == mapping.get("motion_stream") for m in mappings):
+                raise ValueError("Mapping for motion_stream already exists")
+            mappings.append(mapping)
+            self._config["mappings"] = mappings
+            self._write_config_locked()
+            return mapping
+
+    def update_mapping(self, motion_stream: str, updated_mapping: Dict) -> Dict:
+        with self._lock:
+            mappings = self._config.get("mappings", [])
+            for i, mapping in enumerate(mappings):
+                if mapping.get("motion_stream") == motion_stream:
+                    mappings[i] = updated_mapping
+                    self._config["mappings"] = mappings
+                    self._write_config_locked()
+                    return updated_mapping
+        raise ValueError("Mapping not found")
+
+    def delete_mapping(self, motion_stream: str) -> None:
+        with self._lock:
+            mappings = self._config.get("mappings", [])
+            new_mappings = [m for m in mappings if m.get("motion_stream") != motion_stream]
+            if len(new_mappings) == len(mappings):
+                raise ValueError("Mapping not found")
+            self._config["mappings"] = new_mappings
+            self._write_config_locked()
+
+    def get_streams_cache(self) -> Dict:
+        try:
+            with open(self.streams_cache_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"streams": []}
 
     def register_streams(self, streams: List[str]):
         now = time.time()

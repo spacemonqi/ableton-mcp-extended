@@ -1,9 +1,6 @@
 const streamsList = document.getElementById("streams-list");
 const mappingsList = document.getElementById("mappings-list");
 const streamSelect = document.getElementById("stream-select");
-const trackInput = document.getElementById("track-index");
-const deviceInput = document.getElementById("device-index");
-const paramInput = document.getElementById("parameter-index");
 const rangeMinInput = document.getElementById("range-min");
 const rangeMaxInput = document.getElementById("range-max");
 const smoothingInput = document.getElementById("smoothing");
@@ -109,11 +106,11 @@ function renderMappings(mappings) {
     return;
   }
   const rows = mappings.map((m) => {
-    const target = m.target || {};
+    const targetLabel = m.display_name || "Unknown target";
     return `
       <div class="mapping-row">
         <div>${m.motion_stream}</div>
-        <div>Track ${target.track_index} / Device ${target.device_index} / Param ${target.parameter_index}</div>
+        <div>${targetLabel}</div>
         <div>Range ${m.range?.[0]} → ${m.range?.[1]} | Smooth ${m.smoothing}</div>
         <button data-stream="${m.motion_stream}" class="delete-btn">Delete</button>
       </div>
@@ -135,43 +132,43 @@ async function refreshMappings() {
   renderMappings(data.mappings || []);
 }
 
-async function createMapping() {
+async function createMappingFromLast() {
+  if (!streamSelect.value) {
+    lastSelectedHint.textContent = "Select a stream first.";
+    return;
+  }
   const payload = {
     motion_stream: streamSelect.value,
-    track_index: Number(trackInput.value),
-    device_index: Number(deviceInput.value),
-    parameter_index: Number(paramInput.value),
     range_min: Number(rangeMinInput.value),
     range_max: Number(rangeMaxInput.value),
     smoothing: Number(smoothingInput.value),
     enabled: enabledInput.checked
   };
 
-  const res = await fetch("/api/mappings", {
+  const res = await fetch("/api/mappings/create-from-last", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
   if (!res.ok) {
-    const error = await res.json();
-    alert(error.detail || "Failed to create mapping");
+    let message = "Failed to create mapping";
+    try {
+      const error = await res.json();
+      message = error.detail || message;
+    } catch (e) {
+      // ignore
+    }
+    alert(message);
     return;
   }
-  await refreshMappings();
-}
-
-async function fetchLastSelected() {
-  const data = await fetchJson("/api/ableton/last-selected");
-  if (data && data.type === "parameter") {
-    const info = data.data || {};
-    trackInput.value = info.track_index ?? "";
-    deviceInput.value = info.device_index ?? "";
-    paramInput.value = info.param_index ?? "";
-    lastSelectedHint.textContent = `Selected: ${info.device_name || "Device"} / ${info.param_name || "Param"}`;
+  const data = await res.json();
+  if (data?.mapping?.display_name) {
+    lastSelectedHint.textContent = `Created: ${data.mapping.display_name}`;
   } else {
-    lastSelectedHint.textContent = "No parameter selection found.";
+    lastSelectedHint.textContent = "Created mapping.";
   }
+  await refreshMappings();
 }
 
 function rebuildChartDatasets() {
@@ -237,8 +234,7 @@ async function updateChart() {
     // Ignore errors (router might not be running)
   }
 }
-document.getElementById("create-mapping").addEventListener("click", createMapping);
-document.getElementById("fetch-last-selected").addEventListener("click", fetchLastSelected);
+document.getElementById("create-from-last").addEventListener("click", createMappingFromLast);
 
 refreshStreams();
 refreshMappings();

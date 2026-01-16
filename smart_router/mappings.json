@@ -5,23 +5,10 @@
     "ableton_port": 9878,
     "auto_discover_streams": true,
     "streams_cache_interval": 0.5,
-    "streams_ttl_seconds": 5.0
+    "streams_ttl_seconds": 5.0,
+    "ableton_tcp_port": 9877,
+    "api_host": "0.0.0.0",
+    "api_port": 9090
   },
-  "mappings": [
-    {
-      "motion_stream": "forearm-angle",
-      "target": {
-        "track_index": 0,
-        "device_index": 1,
-        "parameter_index": 6
-      },
-      "range": [
-        0.0,
-        1.0
-      ],
-      "smoothing": 0.1,
-      "enabled": true,
-      "updated_at": 1768564969.473897
-    }
-  ]
+  "mappings": []
 }

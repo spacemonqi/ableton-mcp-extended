@@ -1,6 +1,5 @@
 # ableton_mcp_server.py
 from mcp.server.fastmcp import FastMCP, Context
-import socket
 import json
 import logging
 import os
@@ -10,159 +9,52 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
 
+import requests
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AbletonMCPServer")
 
+ROUTER_API_BASE = os.environ.get("ROUTER_API_BASE", "http://localhost:9090")
+
+
+def _router_request(method: str, path: str, payload: Dict[str, Any] = None) -> Dict[str, Any]:
+    url = f"{ROUTER_API_BASE}{path}"
+    response = requests.request(method, url, json=payload, timeout=15.0)
+    if not response.ok:
+        raise Exception(f"Router error: {response.text}")
+    return response.json()
+
 @dataclass
 class AbletonConnection:
-    host: str
-    port: int
-    sock: socket.socket = None
+    base_url: str
     
     def connect(self) -> bool:
-        """Connect to the Ableton Remote Script socket server"""
-        if self.sock:
-            return True
-            
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.connect((self.host, self.port))
-            logger.info(f"Connected to Ableton at {self.host}:{self.port}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to Ableton: {str(e)}")
-            self.sock = None
-            return False
+        """Router is the single Ableton gateway; nothing to connect here."""
+        return True
     
     def disconnect(self):
-        """Disconnect from the Ableton Remote Script"""
-        if self.sock:
-            try:
-                self.sock.close()
-            except Exception as e:
-                logger.error(f"Error disconnecting from Ableton: {str(e)}")
-            finally:
-                self.sock = None
-
-    def receive_full_response(self, sock, buffer_size=8192):
-        """Receive the complete response, potentially in multiple chunks"""
-        chunks = []
-        sock.settimeout(15.0)  # Increased timeout for operations that might take longer
-        
-        try:
-            while True:
-                try:
-                    chunk = sock.recv(buffer_size)
-                    if not chunk:
-                        if not chunks:
-                            raise Exception("Connection closed before receiving any data")
-                        break
-                    
-                    chunks.append(chunk)
-                    
-                    # Check if we've received a complete JSON object
-                    try:
-                        data = b''.join(chunks)
-                        json.loads(data.decode('utf-8'))
-                        logger.info(f"Received complete response ({len(data)} bytes)")
-                        return data
-                    except json.JSONDecodeError:
-                        # Incomplete JSON, continue receiving
-                        continue
-                except socket.timeout:
-                    logger.warning("Socket timeout during chunked receive")
-                    break
-                except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-                    logger.error(f"Socket connection error during receive: {str(e)}")
-                    raise
-        except Exception as e:
-            logger.error(f"Error during receive: {str(e)}")
-            raise
-            
-        # If we get here, we either timed out or broke out of the loop
-        if chunks:
-            data = b''.join(chunks)
-            logger.info(f"Returning data after receive completion ({len(data)} bytes)")
-            try:
-                json.loads(data.decode('utf-8'))
-                return data
-            except json.JSONDecodeError:
-                raise Exception("Incomplete JSON response received")
-        else:
-            raise Exception("No data received")
+        """No-op for HTTP-based router client."""
+        return
 
     def send_command(self, command_type: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Send a command to Ableton and return the response"""
-        if not self.sock and not self.connect():
-            raise ConnectionError("Not connected to Ableton")
-        
-        command = {
-            "type": command_type,
-            "params": params or {}
-        }
-        
-        # Check if this is a state-modifying command
-        is_modifying_command = command_type in [
-            "create_midi_track", "create_audio_track", "set_track_name",
-            "create_clip", "add_notes_to_clip", "set_clip_name",
-            "set_tempo", "fire_clip", "stop_clip", "set_device_parameter",
-            "start_playback", "stop_playback", "load_instrument_or_effect"
-        ]
-        
+        """Forward a command to the Smart Router (single Ableton gateway)."""
         try:
-            logger.info(f"Sending command: {command_type} with params: {params}")
-            
-            # Send the command
-            self.sock.sendall(json.dumps(command).encode('utf-8'))
-            logger.info(f"Command sent, waiting for response...")
-            
-            # For state-modifying commands, add a small delay to give Ableton time to process
-            if is_modifying_command:
-                import time
-                time.sleep(0.1)  # 100ms delay
-            
-            # Set timeout based on command type
-            timeout = 15.0 if is_modifying_command else 10.0
-            self.sock.settimeout(timeout)
-            
-            # Receive the response
-            response_data = self.receive_full_response(self.sock)
-            logger.info(f"Received {len(response_data)} bytes of data")
-            
-            # Parse the response
-            response = json.loads(response_data.decode('utf-8'))
-            logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
-            
-            if response.get("status") == "error":
-                logger.error(f"Ableton error: {response.get('message')}")
-                raise Exception(response.get("message", "Unknown error from Ableton"))
-            
-            # For state-modifying commands, add another small delay after receiving response
-            if is_modifying_command:
-                import time
-                time.sleep(0.1)  # 100ms delay
-            
-            return response.get("result", {})
-        except socket.timeout:
-            logger.error("Socket timeout while waiting for response from Ableton")
-            self.sock = None
-            raise Exception("Timeout waiting for Ableton response")
-        except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-            logger.error(f"Socket connection error: {str(e)}")
-            self.sock = None
-            raise Exception(f"Connection to Ableton lost: {str(e)}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON response from Ableton: {str(e)}")
-            if 'response_data' in locals() and response_data:
-                logger.error(f"Raw response (first 200 bytes): {response_data[:200]}")
-            self.sock = None
-            raise Exception(f"Invalid response from Ableton: {str(e)}")
+            payload = {"type": command_type, "params": params or {}}
+            response = requests.post(
+                f"{self.base_url}/api/ableton/command",
+                json=payload,
+                timeout=15.0
+            )
+            if not response.ok:
+                raise Exception(f"Router error: {response.text}")
+            data = response.json()
+            if data.get("status") != "ok":
+                raise Exception(data.get("message", "Unknown router error"))
+            return data.get("result", {})
         except Exception as e:
-            logger.error(f"Error communicating with Ableton: {str(e)}")
-            self.sock = None
-            raise Exception(f"Communication error with Ableton: {str(e)}")
+            raise Exception(f"Communication error with Router: {str(e)}")
 
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
@@ -188,11 +80,11 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 
 # Create the MCP server with lifespan support
 try:
-    mcp = FastMCP(
-        "AbletonMCP",
-        description="Ableton Live integration through the Model Context Protocol",
-        lifespan=server_lifespan
-    )
+mcp = FastMCP(
+    "AbletonMCP",
+    description="Ableton Live integration through the Model Context Protocol",
+    lifespan=server_lifespan
+)
 except TypeError:
     # Older MCP SDK versions don't accept "description"
     mcp = FastMCP(
@@ -251,65 +143,14 @@ def _locked_write_json(path: str, data: Dict[str, Any]):
             pass
 
 def get_ableton_connection():
-    """Get or create a persistent Ableton connection"""
+    """Get or create a persistent Router client (single Ableton gateway)."""
     global _ableton_connection
-    
+
     if _ableton_connection is not None:
-        try:
-            # Test the connection with a simple ping
-            # We'll try to send an empty message, which should fail if the connection is dead
-            # but won't affect Ableton if it's alive
-            _ableton_connection.sock.settimeout(1.0)
-            _ableton_connection.sock.sendall(b'')
-            return _ableton_connection
-        except Exception as e:
-            logger.warning(f"Existing connection is no longer valid: {str(e)}")
-            try:
-                _ableton_connection.disconnect()
-            except:
-                pass
-            _ableton_connection = None
-    
-    # Connection doesn't exist or is invalid, create a new one
-    if _ableton_connection is None:
-        # Try to connect up to 3 times with a short delay between attempts
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            try:
-                logger.info(f"Connecting to Ableton (attempt {attempt}/{max_attempts})...")
-                _ableton_connection = AbletonConnection(host="localhost", port=9877)
-                if _ableton_connection.connect():
-                    logger.info("Created new persistent connection to Ableton")
-                    
-                    # Validate connection with a simple command
-                    try:
-                        # Get session info as a test
-                        _ableton_connection.send_command("get_session_info")
-                        logger.info("Connection validated successfully")
-                        return _ableton_connection
-                    except Exception as e:
-                        logger.error(f"Connection validation failed: {str(e)}")
-                        _ableton_connection.disconnect()
-                        _ableton_connection = None
-                        # Continue to next attempt
-                else:
-                    _ableton_connection = None
-            except Exception as e:
-                logger.error(f"Connection attempt {attempt} failed: {str(e)}")
-                if _ableton_connection:
-                    _ableton_connection.disconnect()
-                    _ableton_connection = None
-            
-            # Wait before trying again, but only if we have more attempts left
-            if attempt < max_attempts:
-                import time
-                time.sleep(1.0)
-        
-        # If we get here, all connection attempts failed
-        if _ableton_connection is None:
-            logger.error("Failed to connect to Ableton after multiple attempts")
-            raise Exception("Could not connect to Ableton. Make sure the Remote Script is running.")
-    
+        return _ableton_connection
+
+    logger.info("Initializing Router client for Ableton commands")
+    _ableton_connection = AbletonConnection(base_url=ROUTER_API_BASE)
     return _ableton_connection
 
 
@@ -1397,21 +1238,55 @@ def create_mapping(
     enabled: bool = True
 ) -> str:
     try:
-        config = _load_mappings_config()
-        for mapping in config["mappings"]:
-            if mapping.get("motion_stream") == motion_stream:
-                return f"Mapping for '{motion_stream}' already exists."
-
-        new_mapping = _build_mapping(
-            motion_stream, track_index, device_index, parameter_index,
-            range_min, range_max, smoothing, enabled
-        )
-        config["mappings"].append(new_mapping)
-        _save_mappings_config(config)
-        return json.dumps(new_mapping, indent=2)
+        payload = {
+            "motion_stream": motion_stream,
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter_index": parameter_index,
+            "range_min": range_min,
+            "range_max": range_max,
+            "smoothing": smoothing,
+            "enabled": enabled
+        }
+        response = _router_request("POST", "/api/mappings", payload)
+        return json.dumps(response.get("mapping", response), indent=2)
     except Exception as e:
         logger.error(f"Error creating mapping: {str(e)}")
         return f"Error creating mapping: {str(e)}"
+
+
+@mcp.tool()
+def create_mapping_from_last_param(
+    ctx: Context,
+    motion_stream: str,
+    range_min: float = 0.0,
+    range_max: float = 1.0,
+    smoothing: float = 0.0,
+    enabled: bool = True
+) -> str:
+    """
+    Create a mapping using the last selected Ableton parameter.
+
+    Parameters:
+    - motion_stream: The motion stream name to map from
+    - range_min: Output range minimum (default: 0.0)
+    - range_max: Output range maximum (default: 1.0)
+    - smoothing: Smoothing factor (0-1)
+    - enabled: Whether mapping is enabled
+    """
+    try:
+        payload = {
+            "motion_stream": motion_stream,
+            "range_min": range_min,
+            "range_max": range_max,
+            "smoothing": smoothing,
+            "enabled": enabled
+        }
+        response = _router_request("POST", "/api/mappings/create-from-last", payload)
+        return json.dumps(response.get("mapping", response), indent=2)
+    except Exception as e:
+        logger.error(f"Error creating mapping from last param: {str(e)}")
+        return f"Error creating mapping from last param: {str(e)}"
 
 
 @mcp.tool()
@@ -1427,40 +1302,23 @@ def update_mapping(
     enabled: bool = None
 ) -> str:
     try:
-        config = _load_mappings_config()
-        target_mapping = None
-        for mapping in config["mappings"]:
-            if mapping.get("motion_stream") == motion_stream:
-                target_mapping = mapping
-                break
-        if not target_mapping:
-            return f"Mapping for '{motion_stream}' not found."
-
-        target = target_mapping.get("target", {})
+        payload: Dict[str, Any] = {}
         if track_index is not None:
-            target["track_index"] = int(track_index)
+            payload["track_index"] = track_index
         if device_index is not None:
-            target["device_index"] = int(device_index)
+            payload["device_index"] = device_index
         if parameter_index is not None:
-            target["parameter_index"] = int(parameter_index)
-        target_mapping["target"] = target
-
-        if range_min is not None or range_max is not None:
-            current_range = target_mapping.get("range", [0.0, 1.0])
-            if range_min is None:
-                range_min = current_range[0]
-            if range_max is None:
-                range_max = current_range[1]
-            target_mapping["range"] = [float(range_min), float(range_max)]
-
+            payload["parameter_index"] = parameter_index
+        if range_min is not None:
+            payload["range_min"] = range_min
+        if range_max is not None:
+            payload["range_max"] = range_max
         if smoothing is not None:
-            target_mapping["smoothing"] = float(smoothing)
+            payload["smoothing"] = smoothing
         if enabled is not None:
-            target_mapping["enabled"] = bool(enabled)
-
-        target_mapping["updated_at"] = time.time()
-        _save_mappings_config(config)
-        return json.dumps(target_mapping, indent=2)
+            payload["enabled"] = enabled
+        response = _router_request("PUT", f"/api/mappings/{motion_stream}", payload)
+        return json.dumps(response.get("mapping", response), indent=2)
     except Exception as e:
         logger.error(f"Error updating mapping: {str(e)}")
         return f"Error updating mapping: {str(e)}"
@@ -1469,12 +1327,7 @@ def update_mapping(
 @mcp.tool()
 def delete_mapping(ctx: Context, motion_stream: str) -> str:
     try:
-        config = _load_mappings_config()
-        original_len = len(config["mappings"])
-        config["mappings"] = [m for m in config["mappings"] if m.get("motion_stream") != motion_stream]
-        if len(config["mappings"]) == original_len:
-            return f"Mapping for '{motion_stream}' not found."
-        _save_mappings_config(config)
+        _router_request("DELETE", f"/api/mappings/{motion_stream}")
         return f"Deleted mapping for '{motion_stream}'."
     except Exception as e:
         logger.error(f"Error deleting mapping: {str(e)}")
@@ -1484,8 +1337,8 @@ def delete_mapping(ctx: Context, motion_stream: str) -> str:
 @mcp.tool()
 def list_mappings(ctx: Context) -> str:
     try:
-        config = _load_mappings_config()
-        return json.dumps(config.get("mappings", []), indent=2)
+        response = _router_request("GET", "/api/mappings")
+        return json.dumps(response.get("mappings", response), indent=2)
     except Exception as e:
         logger.error(f"Error listing mappings: {str(e)}")
         return f"Error listing mappings: {str(e)}"
@@ -1494,9 +1347,7 @@ def list_mappings(ctx: Context) -> str:
 @mcp.tool()
 def list_discovered_motion_streams(ctx: Context) -> str:
     try:
-        data = _locked_read_json(STREAMS_CACHE_PATH)
-        if not data:
-            return json.dumps({"streams": []}, indent=2)
+        data = _router_request("GET", "/api/streams")
         return json.dumps(data, indent=2)
     except Exception as e:
         logger.error(f"Error listing motion streams: {str(e)}")
