@@ -1266,6 +1266,30 @@ def get_device_banks(ctx: Context, track_index: int, device_index: int) -> str:
         logger.error(f"Error getting device banks: {str(e)}")
         return f"Error getting device banks: {str(e)}"
 
+# Parameter Selection Detection
+
+@mcp.tool()
+def get_last_selected_parameter(ctx: Context) -> str:
+    """
+    Get the MOST RECENT clicked item in Ableton Live.
+    Returns only the single most recently selected element to avoid ambiguity.
+    
+    Returns a dictionary with:
+    - type: One of 'clip', 'parameter', or None
+    - data: The selected item's details (name, index, value, etc.)
+    - timestamp: When it was selected
+    
+    Only tracks clip and parameter selections (ignores track/scene to avoid
+    cascading selection ambiguity). This is essential for click-to-map workflows.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_last_selected_parameter")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting last selected items: {str(e)}")
+        return f"Error getting last selected items: {str(e)}"
+
 # Main execution
 def main():
     """Run the MCP server"""

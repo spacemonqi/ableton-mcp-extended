@@ -42,6 +42,15 @@ class AbletonMCP(ControlSurface):
         # Cache the song reference for easier access
         self._song = self.song()
         
+        # Track the last selected items across all categories
+        self.last_selected_track = None
+        self.last_selected_scene = None
+        self.last_selected_clip = None
+        self.last_selected_parameter = None
+        
+        # Add listeners for all selection types
+        self._setup_selection_listeners()
+        
         # Start the socket servers
         self.start_server()
         self.start_udp_server()
@@ -55,6 +64,9 @@ class AbletonMCP(ControlSurface):
         """Called when Ableton closes or the control surface is removed"""
         self.log_message("AbletonMCP disconnecting...")
         self.running = False
+        
+        # Clean up all selection listeners
+        self._cleanup_selection_listeners()
         
         # Stop the TCP server
         if self.server:
@@ -343,6 +355,8 @@ class AbletonMCP(ControlSurface):
                     params.get("track_index", 0),
                     params.get("device_index", 0)
                 )
+            elif command_type == "get_last_selected_parameter":
+                response["result"] = self._get_last_selected_parameter()
             # Commands that modify Live's state should be scheduled on the main thread
             elif command_type in ["create_midi_track", "set_track_name",
                                  "create_clip", "add_notes_to_clip", "set_clip_name",
@@ -1505,6 +1519,267 @@ class AbletonMCP(ControlSurface):
     def _get_scenes_info(self):
         self.log_message("_get_scenes_info called")
         return {"status": "placeholder_no_data"}
+
+    # Multi-Category Selection Detection
+    
+    def _setup_selection_listeners(self):
+        """Add listeners to detect all types of selections"""
+        try:
+            # Track selection
+            if hasattr(self._song.view, 'add_selected_track_listener'):
+                self._song.view.add_selected_track_listener(self._on_track_selected)
+            
+            # Scene selection
+            if hasattr(self._song.view, 'add_selected_scene_listener'):
+                self._song.view.add_selected_scene_listener(self._on_scene_selected)
+            
+            # Clip selection (detail clip - fires when you click a clip)
+            if hasattr(self._song.view, 'add_detail_clip_listener'):
+                self._song.view.add_detail_clip_listener(self._on_clip_selected)
+            
+            # Parameter selection
+            if hasattr(self._song.view, 'add_selected_parameter_listener'):
+                self._song.view.add_selected_parameter_listener(self._on_parameter_selected)
+            
+        except Exception as e:
+            self.log_message("Error setting up selection listeners: " + str(e))
+    
+    def _cleanup_selection_listeners(self):
+        """Remove all selection listeners"""
+        try:
+            if hasattr(self._song.view, 'remove_selected_track_listener'):
+                self._song.view.remove_selected_track_listener(self._on_track_selected)
+            
+            if hasattr(self._song.view, 'remove_selected_scene_listener'):
+                self._song.view.remove_selected_scene_listener(self._on_scene_selected)
+            
+            if hasattr(self._song.view, 'remove_detail_clip_listener'):
+                self._song.view.remove_detail_clip_listener(self._on_clip_selected)
+            
+            if hasattr(self._song.view, 'remove_selected_parameter_listener'):
+                self._song.view.remove_selected_parameter_listener(self._on_parameter_selected)
+            
+            self.log_message("Selection listeners removed")
+        except Exception as e:
+            self.log_message("Error cleaning up selection listeners: " + str(e))
+    
+    def _on_track_selected(self):
+        """Called when a track is selected in Ableton"""
+        try:
+            import time
+            selected_track = self._song.view.selected_track
+            
+            if not selected_track:
+                return
+            
+            # Find track index
+            track_index = -1
+            track_type = "unknown"
+            
+            for i, track in enumerate(self._song.tracks):
+                if track == selected_track:
+                    track_index = i
+                    track_type = "track"
+                    break
+            
+            if track_index == -1:
+                for i, track in enumerate(self._song.return_tracks):
+                    if track == selected_track:
+                        track_index = i
+                        track_type = "return"
+                        break
+            
+            if track_index == -1 and selected_track == self._song.master_track:
+                track_index = 0
+                track_type = "master"
+            
+            self.last_selected_track = {
+                'track_index': track_index,
+                'track_name': selected_track.name,
+                'track_type': track_type,
+                'timestamp': time.time()
+            }
+            self.log_message("Track selected: {0}".format(selected_track.name))
+        except Exception as e:
+            self.log_message("Error in track selection callback: " + str(e))
+    
+    def _on_scene_selected(self):
+        """Called when a scene is selected in Ableton"""
+        try:
+            import time
+            selected_scene = self._song.view.selected_scene
+            
+            if not selected_scene:
+                return
+            
+            # Find scene index
+            scene_index = -1
+            for i, scene in enumerate(self._song.scenes):
+                if scene == selected_scene:
+                    scene_index = i
+                    break
+            
+            self.last_selected_scene = {
+                'scene_index': scene_index,
+                'scene_name': selected_scene.name,
+                'timestamp': time.time()
+            }
+            self.log_message("Scene selected: {0}".format(selected_scene.name))
+        except Exception as e:
+            self.log_message("Error in scene selection callback: " + str(e))
+    
+    def _on_clip_selected(self):
+        """Called when a clip is clicked/selected in Ableton (shown in Detail View)"""
+        try:
+            import time
+            clip = self._song.view.detail_clip
+            
+            if not clip:
+                # No clip is selected (maybe clicked on empty clip slot)
+                return
+            
+            # Find the track and clip slot index by searching for this clip
+            track_index = -1
+            clip_index = -1
+            track_name = "Unknown"
+            
+            for t_idx, track in enumerate(self._song.tracks):
+                for c_idx, slot in enumerate(track.clip_slots):
+                    if slot.has_clip and slot.clip == clip:
+                        track_index = t_idx
+                        clip_index = c_idx
+                        track_name = track.name
+                        break
+                if track_index != -1:
+                    break
+            
+            clip_info = {
+                'track_index': track_index,
+                'track_name': track_name,
+                'clip_index': clip_index,
+                'clip_name': clip.name,
+                'is_playing': clip.is_playing,
+                'is_recording': clip.is_recording,
+                'timestamp': time.time()
+            }
+            
+            self.last_selected_clip = clip_info
+            self.log_message("Clip selected: '{0}' on Track {1}, Slot {2}".format(clip.name, track_index, clip_index))
+        except Exception as e:
+            self.log_message("Error in clip selection callback: " + str(e))
+    
+    def _on_parameter_selected(self):
+        """Called when a parameter is clicked/selected in Ableton"""
+        try:
+            selected_param = self._song.view.selected_parameter
+            
+            if not selected_param:
+                return
+            
+            # Find which track/device/parameter this belongs to
+            param_info = self._find_parameter_location(selected_param)
+            
+            if param_info:
+                import time
+                param_info['timestamp'] = time.time()
+                self.last_selected_parameter = param_info
+                self.log_message("Parameter selected: {0} on {1}".format(
+                    param_info.get('param_name', 'unknown'),
+                    param_info.get('device_name', 'unknown device')
+                ))
+        except Exception as e:
+            self.log_message("Error in parameter selection callback: " + str(e))
+    
+    def _find_parameter_location(self, param_obj):
+        """Find the track/device/parameter indices for a given parameter object"""
+        try:
+            # Search through all tracks
+            for track_index, track in enumerate(self._song.tracks):
+                for device_index, device in enumerate(track.devices):
+                    for param_index, param in enumerate(device.parameters):
+                        if param == param_obj:
+                            return {
+                                'track_index': track_index,
+                                'track_name': track.name,
+                                'device_index': device_index,
+                                'device_name': device.name,
+                                'param_index': param_index,
+                                'param_name': param.name,
+                                'param_value': param.value,
+                                'param_min': param.min,
+                                'param_max': param.max
+                            }
+            
+            # Also check return tracks
+            for track_index, track in enumerate(self._song.return_tracks):
+                for device_index, device in enumerate(track.devices):
+                    for param_index, param in enumerate(device.parameters):
+                        if param == param_obj:
+                            return {
+                                'track_index': -1,  # Special index for return tracks
+                                'track_name': track.name + " (Return)",
+                                'device_index': device_index,
+                                'device_name': device.name,
+                                'param_index': param_index,
+                                'param_name': param.name,
+                                'param_value': param.value,
+                                'param_min': param.min,
+                                'param_max': param.max
+                            }
+            
+            # Check master track
+            if hasattr(self._song, 'master_track'):
+                track = self._song.master_track
+                for device_index, device in enumerate(track.devices):
+                    for param_index, param in enumerate(device.parameters):
+                        if param == param_obj:
+                            return {
+                                'track_index': -2,  # Special index for master
+                                'track_name': "Master",
+                                'device_index': device_index,
+                                'device_name': device.name,
+                                'param_index': param_index,
+                                'param_name': param.name,
+                                'param_value': param.value,
+                                'param_min': param.min,
+                                'param_max': param.max
+                            }
+            
+            return None
+        except Exception as e:
+            self.log_message("Error finding parameter location: " + str(e))
+            return None
+    
+    def _get_last_selected_parameter(self):
+        """Get the MOST RECENT selected item between clip and parameter only.
+        
+        Track and scene selections are ignored to avoid ambiguity when clicking clips.
+        Returns the most recent between clip and parameter based on timestamp.
+        """
+        candidates = []
+        
+        if self.last_selected_clip and self.last_selected_clip.get('timestamp'):
+            candidates.append(('clip', self.last_selected_clip))
+        
+        if self.last_selected_parameter and self.last_selected_parameter.get('timestamp'):
+            candidates.append(('parameter', self.last_selected_parameter))
+        
+        # If nothing has been selected yet
+        if not candidates:
+            return {
+                'type': None,
+                'data': None,
+                'timestamp': None
+            }
+        
+        # Return the most recent by timestamp
+        selected_type, selected_data = max(candidates, key=lambda x: x[1]['timestamp'])
+        
+        return {
+            'type': selected_type,
+            'data': selected_data,
+            'timestamp': selected_data['timestamp']
+        }
 
     def _get_device_banks(self, track_index, device_index):
         """Get all parameter banks from a device"""
