@@ -32,7 +32,7 @@ class AbletonConnection:
     
     def connect(self) -> bool:
         """Router is the single Ableton gateway; nothing to connect here."""
-        return True
+            return True
     
     def disconnect(self):
         """No-op for HTTP-based router client."""
@@ -89,8 +89,8 @@ except TypeError:
     # Older MCP SDK versions don't accept "description"
     mcp = FastMCP(
         "AbletonMCP",
-        lifespan=server_lifespan
-    )
+    lifespan=server_lifespan
+)
 
 # Global connection for resources
 _ableton_connection = None
@@ -112,7 +112,7 @@ def _locked_read_json(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
         return {}
     with open(path, "r", encoding="utf-8") as f:
-        try:
+            try:
             fcntl.flock(f.fileno(), fcntl.LOCK_SH)
         except Exception:
             pass
@@ -1352,6 +1352,19 @@ def list_discovered_motion_streams(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error listing motion streams: {str(e)}")
         return f"Error listing motion streams: {str(e)}"
+
+@mcp.tool()
+def observe_mcp_state(ctx: Context) -> str:
+    """
+    Return Smart Router state for LLM observability.
+    Includes streams, mappings (with range/smoothing/enabled/target_meta), and last_selected.
+    """
+    try:
+        data = _router_request("GET", "/api/observe")
+        return json.dumps(data, indent=2)
+    except Exception as e:
+        logger.error(f"Error observing MCP state: {str(e)}")
+        return f"Error observing MCP state: {str(e)}"
 
 # Main execution
 def main():

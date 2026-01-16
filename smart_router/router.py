@@ -249,6 +249,17 @@ class SmartRouter:
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
+        @app.get("/api/observe")
+        def observe_state():
+            try:
+                return {
+                    "streams": self.config_manager.get_streams_cache().get("streams", []),
+                    "mappings": self.config_manager.list_mappings(),
+                    "last_selected": self.get_last_selected_parameter()
+                }
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
         @app.post("/api/ableton/command")
         def ableton_command(payload: Dict[str, Any]):
             try:

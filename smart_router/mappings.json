@@ -10,5 +10,27 @@
     "api_host": "0.0.0.0",
     "api_port": 9090
   },
-  "mappings": []
+  "mappings": [
+    {
+      "motion_stream": "forearm-angle",
+      "target": {
+        "track_index": 0,
+        "device_index": 1,
+        "parameter_index": 6
+      },
+      "target_meta": {
+        "track_name": "1-Chord Afterfade",
+        "device_name": "EQ Eight",
+        "param_name": "1 Frequency A"
+      },
+      "display_name": "Track 0 EQ Eight 1 Frequency A",
+      "range": [
+        0.0,
+        1.0
+      ],
+      "smoothing": 0.0,
+      "enabled": true,
+      "updated_at": 1768573390.018979
+    }
+  ]
 }

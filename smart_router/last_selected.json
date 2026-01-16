@@ -5,12 +5,12 @@
     "track_name": "1-Chord Afterfade",
     "device_index": 1,
     "device_name": "EQ Eight",
-    "param_index": 6,
-    "param_name": "1 Frequency A",
-    "param_value": 0.5634920597076416,
+    "param_index": 8,
+    "param_name": "1 Resonance A",
+    "param_value": 0.5212895274162292,
     "param_min": 0.0,
     "param_max": 1.0,
-    "timestamp": 1768564659.189795
+    "timestamp": 1768573280.1848269
   },
-  "timestamp": 1768564659.189795
+  "timestamp": 1768573280.1848269
 }
