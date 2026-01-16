@@ -3,6 +3,9 @@ from mcp.server.fastmcp import FastMCP, Context
 import socket
 import json
 import logging
+import os
+import time
+import fcntl
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
@@ -185,11 +188,11 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 
 # Create the MCP server with lifespan support
 try:
-    mcp = FastMCP(
-        "AbletonMCP",
-        description="Ableton Live integration through the Model Context Protocol",
-        lifespan=server_lifespan
-    )
+mcp = FastMCP(
+    "AbletonMCP",
+    description="Ableton Live integration through the Model Context Protocol",
+    lifespan=server_lifespan
+)
 except TypeError:
     # Older MCP SDK versions don't accept "description"
     mcp = FastMCP(
@@ -199,6 +202,53 @@ except TypeError:
 
 # Global connection for resources
 _ableton_connection = None
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+MAPPINGS_CONFIG_PATH = os.path.join(PROJECT_ROOT, "smart_router", "mappings.json")
+STREAMS_CACHE_PATH = os.path.join(PROJECT_ROOT, "smart_router", "streams.json")
+LAST_SELECTED_CACHE_PATH = os.path.join(PROJECT_ROOT, "smart_router", "last_selected.json")
+
+
+def _ensure_mappings_file():
+    if not os.path.exists(MAPPINGS_CONFIG_PATH):
+        os.makedirs(os.path.dirname(MAPPINGS_CONFIG_PATH), exist_ok=True)
+        with open(MAPPINGS_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump({"settings": {}, "mappings": []}, f, indent=2)
+
+
+def _locked_read_json(path: str) -> Dict[str, Any]:
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+        except Exception:
+            pass
+        try:
+            return json.load(f)
+        except Exception:
+            return {}
+        finally:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+
+def _locked_write_json(path: str, data: Dict[str, Any]):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        except Exception:
+            pass
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
 
 def get_ableton_connection():
     """Get or create a persistent Ableton connection"""
@@ -1285,10 +1335,172 @@ def get_last_selected_parameter(ctx: Context) -> str:
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_last_selected_parameter")
+        try:
+            _locked_write_json(LAST_SELECTED_CACHE_PATH, result)
+        except Exception as cache_error:
+            logger.warning(f"Could not write last selected cache: {cache_error}")
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error getting last selected items: {str(e)}")
         return f"Error getting last selected items: {str(e)}"
+
+# Mapping Management Tools
+
+def _load_mappings_config() -> Dict[str, Any]:
+    _ensure_mappings_file()
+    config = _locked_read_json(MAPPINGS_CONFIG_PATH)
+    if "settings" not in config:
+        config["settings"] = {}
+    if "mappings" not in config or not isinstance(config["mappings"], list):
+        config["mappings"] = []
+    return config
+
+
+def _save_mappings_config(config: Dict[str, Any]):
+    _locked_write_json(MAPPINGS_CONFIG_PATH, config)
+
+
+def _build_mapping(
+    motion_stream: str,
+    track_index: int,
+    device_index: int,
+    parameter_index: int,
+    range_min: float = 0.0,
+    range_max: float = 1.0,
+    smoothing: float = 0.0,
+    enabled: bool = True
+) -> Dict[str, Any]:
+    return {
+        "motion_stream": motion_stream,
+        "target": {
+            "track_index": int(track_index),
+            "device_index": int(device_index),
+            "parameter_index": int(parameter_index)
+        },
+        "range": [float(range_min), float(range_max)],
+        "smoothing": float(smoothing),
+        "enabled": bool(enabled),
+        "updated_at": time.time()
+    }
+
+
+@mcp.tool()
+def create_mapping(
+    ctx: Context,
+    motion_stream: str,
+    track_index: int,
+    device_index: int,
+    parameter_index: int,
+    range_min: float = 0.0,
+    range_max: float = 1.0,
+    smoothing: float = 0.0,
+    enabled: bool = True
+) -> str:
+    try:
+        config = _load_mappings_config()
+        for mapping in config["mappings"]:
+            if mapping.get("motion_stream") == motion_stream:
+                return f"Mapping for '{motion_stream}' already exists."
+
+        new_mapping = _build_mapping(
+            motion_stream, track_index, device_index, parameter_index,
+            range_min, range_max, smoothing, enabled
+        )
+        config["mappings"].append(new_mapping)
+        _save_mappings_config(config)
+        return json.dumps(new_mapping, indent=2)
+    except Exception as e:
+        logger.error(f"Error creating mapping: {str(e)}")
+        return f"Error creating mapping: {str(e)}"
+
+
+@mcp.tool()
+def update_mapping(
+    ctx: Context,
+    motion_stream: str,
+    track_index: int = None,
+    device_index: int = None,
+    parameter_index: int = None,
+    range_min: float = None,
+    range_max: float = None,
+    smoothing: float = None,
+    enabled: bool = None
+) -> str:
+    try:
+        config = _load_mappings_config()
+        target_mapping = None
+        for mapping in config["mappings"]:
+            if mapping.get("motion_stream") == motion_stream:
+                target_mapping = mapping
+                break
+        if not target_mapping:
+            return f"Mapping for '{motion_stream}' not found."
+
+        target = target_mapping.get("target", {})
+        if track_index is not None:
+            target["track_index"] = int(track_index)
+        if device_index is not None:
+            target["device_index"] = int(device_index)
+        if parameter_index is not None:
+            target["parameter_index"] = int(parameter_index)
+        target_mapping["target"] = target
+
+        if range_min is not None or range_max is not None:
+            current_range = target_mapping.get("range", [0.0, 1.0])
+            if range_min is None:
+                range_min = current_range[0]
+            if range_max is None:
+                range_max = current_range[1]
+            target_mapping["range"] = [float(range_min), float(range_max)]
+
+        if smoothing is not None:
+            target_mapping["smoothing"] = float(smoothing)
+        if enabled is not None:
+            target_mapping["enabled"] = bool(enabled)
+
+        target_mapping["updated_at"] = time.time()
+        _save_mappings_config(config)
+        return json.dumps(target_mapping, indent=2)
+    except Exception as e:
+        logger.error(f"Error updating mapping: {str(e)}")
+        return f"Error updating mapping: {str(e)}"
+
+
+@mcp.tool()
+def delete_mapping(ctx: Context, motion_stream: str) -> str:
+    try:
+        config = _load_mappings_config()
+        original_len = len(config["mappings"])
+        config["mappings"] = [m for m in config["mappings"] if m.get("motion_stream") != motion_stream]
+        if len(config["mappings"]) == original_len:
+            return f"Mapping for '{motion_stream}' not found."
+        _save_mappings_config(config)
+        return f"Deleted mapping for '{motion_stream}'."
+    except Exception as e:
+        logger.error(f"Error deleting mapping: {str(e)}")
+        return f"Error deleting mapping: {str(e)}"
+
+
+@mcp.tool()
+def list_mappings(ctx: Context) -> str:
+    try:
+        config = _load_mappings_config()
+        return json.dumps(config.get("mappings", []), indent=2)
+    except Exception as e:
+        logger.error(f"Error listing mappings: {str(e)}")
+        return f"Error listing mappings: {str(e)}"
+
+
+@mcp.tool()
+def list_discovered_motion_streams(ctx: Context) -> str:
+    try:
+        data = _locked_read_json(STREAMS_CACHE_PATH)
+        if not data:
+            return json.dumps({"streams": []}, indent=2)
+        return json.dumps(data, indent=2)
+    except Exception as e:
+        logger.error(f"Error listing motion streams: {str(e)}")
+        return f"Error listing motion streams: {str(e)}"
 
 # Main execution
 def main():

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ableton Motion Mapping</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Ableton Motion Mapping</h1>
+        <p>Map motion streams to Ableton parameters in real time.</p>
+      </header>
+
+      <main class="grid">
+        <section class="panel">
+          <h2>Motion Streams</h2>
+          <ul id="streams-list"></ul>
+        </section>
+
+        <section class="panel">
+          <h2>Current Mappings</h2>
+          <div id="mappings-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Create Mapping</h2>
+          <div class="form-row">
+            <label>Stream</label>
+            <select id="stream-select"></select>
+          </div>
+          <div class="form-row">
+            <label>Track</label>
+            <input id="track-index" type="number" min="0" />
+          </div>
+          <div class="form-row">
+            <label>Device</label>
+            <input id="device-index" type="number" min="0" />
+          </div>
+          <div class="form-row">
+            <label>Parameter</label>
+            <input id="parameter-index" type="number" min="0" />
+          </div>
+          <div class="form-row">
+            <label>Range Min</label>
+            <input id="range-min" type="number" step="0.01" value="0" />
+          </div>
+          <div class="form-row">
+            <label>Range Max</label>
+            <input id="range-max" type="number" step="0.01" value="1" />
+          </div>
+          <div class="form-row">
+            <label>Smoothing</label>
+            <input id="smoothing" type="number" step="0.01" value="0" />
+          </div>
+          <div class="form-row">
+            <label>Enabled</label>
+            <input id="enabled" type="checkbox" checked />
+          </div>
+          <div class="form-row">
+            <button id="fetch-last-selected">Use Last Clicked Param</button>
+            <button id="create-mapping">Create Mapping</button>
+          </div>
+          <p class="hint" id="last-selected-hint"></p>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

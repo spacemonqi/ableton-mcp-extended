@@ -1,0 +1,16 @@
+{
+  "streams": [
+    {
+      "name": "wrist-bend",
+      "last_seen": 1768564421.298073
+    },
+    {
+      "name": "forearm-angle",
+      "last_seen": 1768564421.298073
+    },
+    {
+      "name": "elbow-height",
+      "last_seen": 1768564421.298073
+    }
+  ]
+}
