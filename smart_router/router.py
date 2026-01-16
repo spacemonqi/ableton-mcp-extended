@@ -10,6 +10,11 @@ from udp_receiver import UDPReceiver
 from udp_sender import UDPSender
 
 
+def log(msg: str):
+    """Simple logging helper"""
+    print(f"[SmartRouter] {msg}", flush=True)
+
+
 def clamp(value: float, min_value: float, max_value: float) -> float:
     return max(min_value, min(max_value, value))
 
@@ -29,12 +34,17 @@ class SmartRouter:
         ableton_host = settings.get("ableton_host", "localhost")
         ableton_port = int(settings.get("ableton_port", 9878))
 
+        log(f"Starting Smart Router...")
+        log(f"  MoCap UDP: {host}:{mocap_port}")
+        log(f"  Ableton UDP: {ableton_host}:{ableton_port}")
+
         self._receiver = UDPReceiver(host, mocap_port, self.queue)
         self._sender = UDPSender(ableton_host, ableton_port)
 
         self.config_manager.start_watcher()
         self._receiver.start()
         self._running = True
+        log("Smart Router running. Press Ctrl+C to stop.")
         self._main_loop()
 
     def stop(self):
@@ -44,6 +54,7 @@ class SmartRouter:
         self.config_manager.stop_watcher()
 
     def _main_loop(self):
+        last_log_time = 0
         while self._running:
             try:
                 payload = self.queue.get(timeout=0.1)
@@ -56,10 +67,18 @@ class SmartRouter:
             stream_names = list(payload.keys())
             self.config_manager.register_streams(stream_names)
 
+            # Log periodically (every 2 seconds) to avoid spam
+            now = time.time()
+            if now - last_log_time > 2.0:
+                log(f"Received motion data: {list(payload.keys())}")
+                last_log_time = now
+
             for stream_name, raw_value in payload.items():
                 if not isinstance(raw_value, (int, float)):
                     continue
                 mappings = self.config_manager.get_mappings_for_stream(stream_name)
+                if mappings and now - last_log_time < 0.1:  # Only log if we just logged above
+                    log(f"  '{stream_name}' -> {len(mappings)} mapping(s)")
                 for mapping in mappings:
                     self._apply_mapping(stream_name, float(raw_value), mapping)
 

@@ -13,6 +13,10 @@ except Exception:
     Observer = None
     FileSystemEventHandler = object
 
+def log(msg: str):
+    """Simple logging helper"""
+    print(f"[ConfigManager] {msg}", flush=True)
+
 
 DEFAULT_CONFIG = {
     "settings": {
@@ -32,12 +36,23 @@ class _ConfigFileHandler(FileSystemEventHandler):
         super().__init__()
         self.manager = manager
 
+    def on_any_event(self, event):
+        """Log all events for debugging"""
+        log(f"File event: {event.event_type} on {event.src_path}")
+        
     def on_modified(self, event):
-        if os.path.abspath(event.src_path) == os.path.abspath(self.manager.config_path):
+        target = os.path.abspath(self.manager.config_path)
+        actual = os.path.abspath(event.src_path)
+        log(f"Modified event - target: {target}, actual: {actual}, match: {target == actual}")
+        if target == actual:
+            log(f"Config file modified, reloading...")
             self.manager.load_config()
 
     def on_created(self, event):
-        if os.path.abspath(event.src_path) == os.path.abspath(self.manager.config_path):
+        target = os.path.abspath(self.manager.config_path)
+        actual = os.path.abspath(event.src_path)
+        if target == actual:
+            log(f"Config file created, reloading...")
             self.manager.load_config()
 
 
@@ -71,7 +86,10 @@ class ConfigManager:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-            except Exception:
+                mapping_count = len(data.get("mappings", []))
+                log(f"Config loaded: {mapping_count} mapping(s) from {self.config_path}")
+            except Exception as e:
+                log(f"Failed to load config: {e}, using defaults")
                 data = DEFAULT_CONFIG
 
             # Normalize structure
@@ -130,8 +148,10 @@ class ConfigManager:
 
     def start_watcher(self):
         if not WATCHDOG_AVAILABLE:
+            log("WARNING: watchdog not available, hot-reload disabled")
             return
         if self._observer:
+            log("File watcher already running")
             return
         directory = os.path.dirname(self.config_path)
         handler = _ConfigFileHandler(self)
@@ -140,6 +160,7 @@ class ConfigManager:
         observer.daemon = True
         observer.start()
         self._observer = observer
+        log(f"File watcher started on directory: {directory}")
 
     def stop_watcher(self):
         if self._observer:
